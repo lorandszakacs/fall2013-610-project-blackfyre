@@ -2,8 +2,9 @@ Project Blackfyre
 ====================
 Origin of name: Daemon Blackfyre, pretender to the throne of the Seven Kingdoms. I will let the reader decide on the exact interpretation.
 
-How to re-run the experiment:
-in the boa-analyses folder you can find two files: gather-effects.boa and gather-effects.boa
+Re-running the experiment
+====================
+In the boa-analyses folder you can find two files: gather-effects.boa and gather-effects.boa
 These programs can be run at http://boa.cs.iastate.edu/ but you need an account. Alternatively, their results are available at:
 gather-classes.boa:		http://boa.cs.iastate.edu/boa/?q=boa/job/public/2750
 gather-effects.boa:		http://boa.cs.iastate.edu/boa/?q=boa/job/public/2751
