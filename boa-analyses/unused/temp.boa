@@ -1,0 +1,222 @@
+p: Project = input;
+
+#all_fields: output collection[string] of string;
+effects: output collection[string][string][string] of string;
+
+# (subclass fqn) -> superclass fqn
+#sts: output collection[string] of string;
+# ========== Constants ===========
+#ERR_MINOR := "minor error";
+#ERR_FATAL := "fatal error";
+
+EMPTY_SIG := "<empty>";
+CTOR_NAME := "<init>";
+ABSTRACT_EFF := "<abstract>";
+NO_PARENT := "no_parent";
+# ======== End Constants =========
+
+strCombine := function (strings: array of string, sep: string): string {
+    combined := "";
+    foreach (i: int; def(strings[i])) {
+        combined = format("%s%s%s", combined, sep, strings[i]);
+    }
+    return combined;
+};
+
+# given the ASTroot of a file it will return the name of the package
+# the file is in.
+getPackageName := function (root: ASTRoot): string {
+    temp := "";
+    foreach (i: int; def(root.namespaces[i])) {
+        if(i == 0) 
+            temp = format("%s", root.namespaces[i].name); 
+        else
+            temp = format("%s.%s", temp, root.namespaces[i].name); 
+    }
+    return temp;
+};
+
+fullyQualifiedName:= function (currPckg: string, typeName: string) : string{
+    return format("%s.%s", currPckg, typeName);
+};
+
+isAbstract := function(m: Method) : bool {
+    foreach(i: int; def(m.modifiers[i])) {
+        if(m.modifiers[i].kind == ModifierKind.ABSTRACT)
+            return true;
+    }
+    return false;
+};
+
+typeSignature := function (m: Method): string {
+    sig := "";
+    if (len(m.arguments) == 0)
+        return EMPTY_SIG;
+    foreach(i: int; def(m.arguments[i])) {
+        sig = format("%s, %s", m.arguments[i].variable_type.name);
+    }
+    return sig;
+};
+
+isConstructor := function(m: Method): bool {
+    return match(m.name, CTOR_NAME);
+};
+
+hasClassSupertype := function(decl: Declaration): bool {
+    if (def(decl.parents)) {
+        foreach(i: int; def(decl.parents[i])) {
+            if(decl.parents[i].kind == TypeKind.CLASS)
+                return true;
+        }
+    }
+    return false;
+};
+
+getClassParentName := function(decl: Declaration): string {
+    if (def(decl.parents)) {
+        foreach(i: int; def(decl.parents[i])) {
+            if(decl.parents[i].kind == TypeKind.CLASS)
+                return decl.parents[i].name;
+        }
+    }
+    #error_log[p.id][ERR_MINOR] << format("getClassParentName called on decl with no parent. class = %s", decl.name);
+    return "BUG_BUG_BUG";
+};
+
+getFieldsFromClassDecl := function(d: Declaration):  map[string] of bool {
+    f: map[string] of bool;
+    foreach (i: int; def(d.fields[i])) {
+        f[d.fields[i].name] = true;
+    }
+    return f;
+};
+
+getFieldsOfSuperClass := function(classes: map[string] of Declaration, fqnOfSuper: string): map[string] of bool {
+    fields: map[string] of bool;
+    
+    if(!haskey(classes, fqnOfSuper)) {
+        #error_log[p.id][ERR_MINOR] << format("getFieldsOfSuperClass, could not find super type: %s", fqnOfSuper);
+        return fields;
+    }
+    
+    superDecl := classes[fqnOfSuper];
+    foreach (i: int; def(superDecl.fields[i])) {
+        fields[superDecl.fields[i].name] = true;
+    }
+    return fields;
+};
+
+# this function assumes that the class and super class are contained in the classes map. This
+# function should be called only after we have constructed a full classes map.
+#
+# it will return a union of the fields found in the super-type and the fields found in the subtype
+getFieldsOfChildClass := function(classes: map[string] of Declaration, fqnOfChild: string, fqnOfSuper: string): map[string] of bool {
+    fields: map[string] of bool;
+    
+    if(!haskey(classes, fqnOfChild)) {
+        #error_log[p.id][ERR_MINOR] << format("getFieldsOfClass, could not find child type: %s", fqnOfChild);
+        return fields;
+    }
+    
+    fields = getFieldsOfSuperClass(classes, fqnOfSuper); 
+    if(!def(fields))
+        return fields;
+
+    childDecl := classes[fqnOfChild];
+    foreach (i: int; def(childDecl.fields[i])) {
+        fields[childDecl.fields[i].name] = true;
+    }
+    
+    return fields;
+};
+
+makeMethodEffect := function (varName: string, methName: string ): string {
+    return format("%s.%s()", varName, methName);    
+};
+
+#given a set of fields and a method it computes the effects of this methods.
+getEffectsOfMethod := function(fieldsOfClass: map[string] of bool, method: Method) : array of string {
+  tempEffects: map[string] of bool;
+
+  visit(method, visitor {
+    before n: Method -> {
+        clear(tempEffects);
+        if (isAbstract(n)) {
+            tempEffects[ABSTRACT_EFF] = true;
+        }
+        foreach (i: int; def(n.statements[i]))
+            visit(n.statements[i]);
+        stop;
+    }#end method visitor
+
+    before n: Expression -> {
+        if (n.kind == ExpressionKind.ASSIGN &&
+            n.expressions[0].kind == ExpressionKind.VARACCESS &&
+            haskey(fieldsOfClass, n.expressions[0].variable)) {
+            
+            if(!haskey(tempEffects, n.expressions[0].variable))
+                tempEffects[n.expressions[0].variable] = true;
+        }else if (n.kind == ExpressionKind.METHODCALL &&
+                n.expressions[0].kind == ExpressionKind.VARACCESS &&
+                haskey(fieldsOfClass, n.expressions[0].variable)) {
+   
+                methEffect := makeMethodEffect(n.expressions[0].variable, n.literal);
+                if(!haskey(tempEffects, methEffect))
+                    tempEffects[methEffect] = true;
+        }#end else if
+
+        stop;
+    }#end visit expression
+  });#end visitor
+  
+  return keys(tempEffects);
+};
+
+
+# return a map from the fully qualified name of a class to the Declaration
+# ast node of that class. The map contains the mapping for all classes in the
+# project.
+gatherAllClasses:= function(proj: Project) : map[string] of Declaration {
+    currentPackageName: string;
+    nameToDecl: map[string] of Declaration;
+    
+    fields : map[string] of bool;
+    fqn: string;
+    
+    visit(proj, visitor{
+        before repo: CodeRepository -> {
+            snapshot := getsnapshot(repo);
+            foreach (i: int; def(snapshot[i])) {
+                visit(snapshot[i]);
+            }
+        stop;
+        } # end visit Code Repository;
+    
+        before root: ASTRoot -> {
+            currentPackageName = getPackageName(root);
+        } #end ASTRoot
+            
+        before decl: Declaration -> {
+            if (decl.kind == TypeKind.CLASS) {
+                fqn = fullyQualifiedName(currentPackageName, decl.name);
+                nameToDecl[fqn] = decl;
+                fields = getFieldsFromClassDecl(decl);
+                foreach(i: int; def(decl.methods[i]))
+                    visit(decl.methods[i]);
+            }
+            stop;
+        }
+        
+        before m: Method -> {
+            eff := getEffectsOfMethod(fields, m);
+            effStr := strCombine(eff, " ");
+            effects[p.id][fqn][format("%s %s)", m.name, typeSignature(m)] << effStr;
+        }# end visit method 
+    }); #end visitor definition
+    
+    return nameToDecl;
+};
+
+#if(match(`109474`, p.id)){
+
+classes := gatherAllClasses(p);

@@ -1,0 +1,137 @@
+# fields contains all the fields available within the namespace
+# of the enclosing class of the method. It will include the ones 
+# defined in the superclass.
+fieldsOfClass: map[string] of bool;
+
+getPackageName: = function (root: ASTRoot): string {
+    temp := "";
+
+    foreach (i: int; def(root.namespaces[i])) {
+        if(i == 0) 
+            temp = format("%s", root.namespaces[i].name); 
+        else
+            temp = format("%s.%s", temp, root.namespaces[i].name); 
+    }
+    return temp;
+};
+
+fullyQualifiedName:= function (currPckg: string, typeName: string) : string{
+    return format("%s.%s", currPckg, typeName);
+};
+
+makeMethodEffect := function (varName: string, methName: string ): string {
+    return format("%s.%s()", varName, methName);    
+};
+
+isBehaviouralViolation := function(subEff: array of string, superEff: array of string): bool {
+    if (len(subEff) != len(superEff))
+        return false;
+    else {
+        ifall(i: int; match(subEff[i], superEff[i]))
+            return true;
+    }
+    return false;
+};
+
+# ==== DEBUG VARS
+debug_Expressions: output collection[string] of string;
+# ==== DEBUG VARS
+
+getEffectsOfMethod := function(method: Method) : array of string {
+
+  tempEffects: map[string] of bool;
+
+  visit(method, visitor {
+    before n: Method -> {
+        clear(tempEffects);
+        foreach (i: int; def(n.statements[i]))
+            visit(n.statements[i]);
+        stop;
+    }#end method visitor
+
+    before n: Expression -> {
+        if (n.kind == ExpressionKind.ASSIGN &&
+            n.expressions[0].kind == ExpressionKind.VARACCESS &&
+            haskey(fieldsOfClass, n.expressions[0].variable)) {
+            
+            if(!haskey(tempEffects, n.expressions[0].variable))
+                tempEffects[n.expressions[0].variable] = true;
+        }
+        stop;
+    }#end visit expression
+  });#end visitor
+  
+  return keys(tempEffects);
+};
+
+#full Boa program that can help test this:
+p: Project = input;
+effects: output collection[string][string][string] of string;
+
+# ======= DEBUG VARS
+ALL_FIELDS: output collection[string][string] of string;
+
+ProjectURL: output collection[string][string] of string;
+# ========
+
+currentPackageName : string;
+
+visit(p, visitor {
+    
+    before n: Project -> {
+        ifall (i: int; !match(`^java$`, lowercase(n.programming_languages[i]))) stop;
+        #DEBUG    
+        #if for gadzoink.
+        if (!match(`109474`, p.id)) stop;
+        ProjectURL[p.id][p.name] << p.project_url;
+        #DEBUG
+        foreach (i: int; def(n.code_repositories[i])) {
+            visit(n.code_repositories[i]);
+        }
+        stop;
+    }
+    
+    before root: ASTRoot -> {
+        currentPackageName = getPackageName(root);
+    }
+    
+    before repo: CodeRepository -> {
+        snapshot := getsnapshot(repo);
+        foreach (i: int; def(snapshot[i])) {
+            visit(snapshot[i]);
+        }
+      stop;
+    } # end visit Code Repository;
+
+    before classDecl : Declaration -> {
+        #Debug
+        if (!match(`^IndexRecord$`, classDecl.name)) stop;
+        #end Debug
+        
+        #For now consider only classes. Maybe support anonymous classes as well.
+        if(!def(classDecl) && (classDecl.kind != TypeKind.CLASS))
+            stop;
+        
+        fqn := fullyQualifiedName(currentPackageName, classDecl.name);
+        clear(fieldsOfClass);
+        combinedFields := "";
+        foreach (i: int; def(classDecl.fields[i])) {
+            fieldsOfClass[classDecl.fields[i].name] = true;
+            combinedFields = format("%s %s", combinedFields, classDecl.fields[i].name);
+        }
+        
+        #DEBUG    
+        ALL_FIELDS[p.id][fqn] << combinedFields;
+        #DEBUG
+      
+        foreach(i: int; def(classDecl.methods[i])) {
+            combinedEffects := "";
+            tempEff := getEffectsOfMethod(classDecl.methods[i]);
+            foreach(j: int; def(tempEff[j])) {
+                combinedEffects = format("%s %s", combinedEffects, tempEff[j]);
+            }
+            effects[p.id][fqn][classDecl.methods[i].name] << combinedEffects;
+        }
+        stop;
+    } #end visit class declaration;
+  });

@@ -1,0 +1,236 @@
+\documentclass{beamer}
+\usepackage{graphicx}
+\usetheme{default}
+\usecolortheme{beaver}
+\input{style/style.sty}
+\input{macro/macros.tex}
+
+\title[]{Side-effect disparity as a metric for identifying behavioral subtyping violations}
+\author{Lor\'{a}nd Szak\'{a}cs}
+\institute{Iowa State University}
+\date{December 9 2013}
+
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\Large
+
+\section{Introduction}
+\begin{frame}{Motivation}
+\huge
+\begin{itemize}
+  \item  Behavioral sub-typing is well known heuristic in OOP
+ \end{itemize}
+ \tiny
+R. C. Martin. Agile software development: principles, patterns, and practices. Prentice Hall PTR, 2003
+ \huge
+ \begin{itemize} 
+  \item \pause Currently, formally defined in terms of specification
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Motivation}
+\huge
+Disadvantages of formal specification:
+\begin{itemize}
+  \item \pause someone has to write it
+  \item \pause something has to read it
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Behavioral sub-typing}
+\huge
+\textbf{An alternative}
+\begin{itemize}
+  \item \pause observe behavior through side-effects
+  \item \pause specifically, the difference in side-effects
+  \item \pause let empirical observation lead the way
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Motivation}
+\Huge
+The previous research question:
+\huge
+\begin{itemize}
+  \item \pause Does behavioral sub-typing happen in practice?
+\end{itemize}
+\end{frame} 
+
+\begin{frame}{A Simple Heuristic}
+\Huge
+report a violation if there is a difference between the side-effects of a method in the subclass and superclass
+\end{frame}
+
+\begin{frame}{Side Effects}
+\Huge
+What is a side-effect?
+\huge
+\begin{itemize}
+  \item \pause assignment to a field
+  \item \pause method call on a field
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Boa}
+\huge
+\textbf{Boa}
+\begin{itemize}
+  \item \pause language and framework for large scale software
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Contribution}
+\huge
+\begin{itemize}
+  \item First exploration of the use of side-effects for identifying behavioral sub-typing violations
+\end{itemize}
+\end{frame}
+
+\section{Empirical evaluation}
+\begin{frame}{Looking at real world code}
+\Huge
+\center{5113 Java projects}
+\end{frame}
+
+\begin{frame}{Looking at real world code}
+\Huge
+\center{1286 met the preconditions}
+\normalsize
+
+
+\pause \begin{itemize}
+\item contain dirty kind of sub-typing \pause i.e. override non-abstract methods
+\end{itemize}
+\Large
+
+\pause A nice side-effect of this project, \pause hehe
+
+\normalsize
+\pause \begin{itemize}
+\item extend only classes accessible from within the project
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Looking at Real World Code}
+\Huge
+\center{739 projects contained at least a violation}
+\end{frame}
+
+\begin{frame}{Looking at Real World Code}
+\Huge
+\center{101,433 pairs of subtype-supertype}
+\end{frame}
+
+\begin{frame}{Looking at Real World Code}
+\Huge
+\center{11,600 were violations}
+\end{frame}
+
+\begin{frame}{Looking at Real World Code}
+\Huge
+\center{2,701,596 overridden methods}
+\end{frame}
+
+\begin{frame}{Looking at Real World Code}
+\Huge
+\center{283,216 were violations}
+\end{frame}
+
+%\begin{frame}[fragile]{Loop carried dependency}
+%\begin{lstlisting}
+%//called from within the loop 
+%public void parallelContext() {
+%    //notice how the field "LCD" is first read
+%    int temp = this.LCD;
+%    //...
+%    this.LCD = 42;
+%    //...
+%}
+%\end{lstlisting}
+%\end{frame}
+
+\begin{frame}{Evaluation}
+\Huge
+\center{Manually inspected 20 violations}
+
+
+\Large
+\begin{itemize}
+  \item \pause 1 false positive due to incorrect implementation
+  \item \pause 2 false positives due to subtype method and supertype  method writing to completely different fields.
+  \item \pause 6 false positives due to template pattern
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Template pattern}
+\begin{lstlisting}
+//super code:
+public void validate() throws XPathException {}
+
+//subclass code:
+public void validate() throws XPathException {
+   checkWithinTemplate();
+   test = typeCheck("test", test);
+}
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{How it works}
+\Huge
+  Look away...
+\end{frame}
+
+\begin{frame}{Threats to validity}
+\huge
+\begin{itemize} 
+  \item no independent means of verifying behavioral sub-typing
+  \item \pause no idea how to pigeonhole the numbers 
+  \item \pause although it did not pose a problem in the small random sample\pause, the broad definition of side-effects might cause problems
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Threats to validity}
+\huge
+\begin{itemize} 
+  \item behavioral subtyping concerns itself with specific values
+\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Room for improvement}
+\huge
+\begin{itemize}
+\item improve heuristic
+\item \pause make the identification of a side-effect more precise
+\item \pause account for actual side-effects of method calls
+\item \pause consider side-effects on parameters
+\item \pause more data
+
+\end{itemize}
+\end{frame}
+
+
+
+\begin{frame}{In Summary}
+\Large
+\begin{itemize}
+\item We defined a simple heuristic for identifying behavioral subtyping violations.
+\item \pause evaluated said heuristic on 5113 projects
+\item \pause 11,600 out of 101,433 pairs of subtype-supertype contained violations
+\item \pause 283,216 out of 2,701,596 overridden methods violated behavioral subtyping
+
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Questions}
+  \Huge
+   \center{Questions?}
+\end{frame}
+
+
+\end{document}

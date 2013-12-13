@@ -1,0 +1,303 @@
+p: Project = input;
+
+# (project id, $fqnSubtype extends $fqnSupertype, methodName(typeSignature)) ->
+# 0/1 child={subEffects}  super={superEffects}
+#r: output collection[string][string][string] of string;
+
+# (p.id, fq classname, method name, signature ) << effects
+#cls: output collection[string][string][string] of string;
+all_fields: output collection[string] of string;
+
+# (subclass fqn) -> superclass fqn
+#sts: output collection[string] of string;
+# ========== Constants ===========
+#ERR_MINOR := "minor error";
+#ERR_FATAL := "fatal error";
+
+EMPTY_SIG := "<empty>";
+CTOR_NAME := "<init>";
+ABSTRACT_EFF := "<abstract>";
+NO_PARENT := "no_parent";
+# ======== End Constants =========
+
+strCombine := function (strings: array of string, sep: string): string {
+    combined := "";
+    foreach (i: int; def(strings[i])) {
+        combined = format("%s%s%s", combined, sep, strings[i]);
+    }
+    return combined;
+};
+
+# given the ASTroot of a file it will return the name of the package
+# the file is in.
+getPackageName := function (root: ASTRoot): string {
+    temp := "";
+    foreach (i: int; def(root.namespaces[i])) {
+        if(i == 0) 
+            temp = format("%s", root.namespaces[i].name); 
+        else
+            temp = format("%s.%s", temp, root.namespaces[i].name); 
+    }
+    return temp;
+};
+
+fullyQualifiedName:= function (currPckg: string, typeName: string) : string{
+    return format("%s.%s", currPckg, typeName);
+};
+
+# return a map from the fully qualified name of a class to the Declaration
+# ast node of that class. The map contains the mapping for all classes in the
+# project.
+gatherAllClasses:= function(proj: Project) : map[string] of Declaration {
+    currentPackageName: string;
+    nameToDecl: map[string] of Declaration;
+    
+    visit(proj, visitor{
+        before repo: CodeRepository -> {
+            snapshot := getsnapshot(repo);
+            foreach (i: int; def(snapshot[i])) {
+                visit(snapshot[i]);
+            }
+        stop;
+        } # end visit Code Repository;
+    
+        before root: ASTRoot -> {
+            currentPackageName = getPackageName(root);
+        } #end ASTRoot
+            
+        before decl: Declaration -> {
+            if (decl.kind == TypeKind.CLASS) {
+                fqn := fullyQualifiedName(currentPackageName, decl.name);
+                nameToDecl[fqn] = decl;
+            }
+            stop;
+        }
+    }); #end visitor definition
+    
+    return nameToDecl;
+};
+
+hasClassSupertype := function(decl: Declaration): bool {
+    if (def(decl.parents)) {
+        foreach(i: int; def(decl.parents[i])) {
+            if(decl.parents[i].kind == TypeKind.CLASS)
+                return true;
+        }
+    }
+    return false;
+};
+
+getClassParentName := function(decl: Declaration): string {
+    if (def(decl.parents)) {
+        foreach(i: int; def(decl.parents[i])) {
+            if(decl.parents[i].kind == TypeKind.CLASS)
+                return decl.parents[i].name;
+        }
+    }
+    #error_log[p.id][ERR_MINOR] << format("getClassParentName called on decl with no parent. class = %s", decl.name);
+    return "BUG_BUG_BUG";
+};
+
+getFieldsOfSuperClass := function(classes: map[string] of Declaration, fqnOfSuper: string): map[string] of bool {
+    fields: map[string] of bool;
+    
+    if(!haskey(classes, fqnOfSuper)) {
+        #error_log[p.id][ERR_MINOR] << format("getFieldsOfSuperClass, could not find super type: %s", fqnOfSuper);
+        return fields;
+    }
+    
+    superDecl := classes[fqnOfSuper];
+    foreach (i: int; def(superDecl.fields[i])) {
+        fields[superDecl.fields[i].name] = true;
+    }
+    return fields;
+};
+
+# this function assumes that the class and super class are contained in the classes map. This
+# function should be called only after we have constructed a full classes map.
+#
+# it will return a union of the fields found in the super-type and the fields found in the subtype
+getFieldsOfChildClass := function(classes: map[string] of Declaration, fqnOfChild: string, fqnOfSuper: string): map[string] of bool {
+    fields: map[string] of bool;
+    
+    if(!haskey(classes, fqnOfChild)) {
+        #error_log[p.id][ERR_MINOR] << format("getFieldsOfClass, could not find child type: %s", fqnOfChild);
+        return fields;
+    }
+    
+    fields = getFieldsOfSuperClass(classes, fqnOfSuper); 
+    if(!def(fields))
+        return fields;
+
+    childDecl := classes[fqnOfChild];
+    foreach (i: int; def(childDecl.fields[i])) {
+        fields[childDecl.fields[i].name] = true;
+    }
+    
+    return fields;
+};
+
+isAbstract := function(m: Method) : bool {
+    foreach(i: int; def(m.modifiers[i])) {
+        if(m.modifiers[i].kind == ModifierKind.ABSTRACT)
+            return true;
+    }
+    return false;
+};
+
+#given a set of fields and a method it computes the effects of this methods.
+getEffectsOfMethod := function(fieldsOfClass: map[string] of bool, method: Method) : array of string {
+  tempEffects: map[string] of bool;
+
+  visit(method, visitor {
+    before n: Method -> {
+        clear(tempEffects);
+        if (isAbstract(n)) {
+            tempEffects[ABSTRACT_EFF] = true;
+        }
+        foreach (i: int; def(n.statements[i]))
+            visit(n.statements[i]);
+        stop;
+    }#end method visitor
+
+    before n: Expression -> {
+        if (n.kind == ExpressionKind.ASSIGN &&
+            n.expressions[0].kind == ExpressionKind.VARACCESS &&
+            haskey(fieldsOfClass, n.expressions[0].variable)) {
+            
+            if(!haskey(tempEffects, n.expressions[0].variable))
+                tempEffects[n.expressions[0].variable] = true;
+        }
+        stop;
+    }#end visit expression
+  });#end visitor
+  
+  return keys(tempEffects);
+};
+
+typeSignature := function (m: Method): string {
+    sig := "";
+    if (len(m.arguments) == 0)
+        return EMPTY_SIG;
+    foreach(i: int; def(m.arguments[i])) {
+        sig = format("%s, %s", m.arguments[i].variable_type.name);
+    }
+    return sig;
+};
+
+isConstructor := function(m: Method): bool {
+    return match(m.name, CTOR_NAME);
+};
+
+getFullyQualNameOfSuper := function(classes: map[string] of Declaration, currentImports: array of string, currPackage: string, decl: Declaration): string {
+    parentSimple := getClassParentName(decl);
+    #in case the class was referenced by it's fqn in the extends
+    #clause then we look directly;
+    if(haskey(classes, parentSimple)) {
+        return parentSimple;
+    }
+                    
+    #if the superclass is in the current package;
+    parentFQN := fullyQualifiedName(currPackage, parentSimple);
+    if(haskey(classes, parentFQN)) {
+        return parentFQN;
+    }
+                    
+    #look to see if the parent superclass is in one of the imports.
+    foreach(i: int; def(currentImports[i])) {
+        import := currentImports[i];
+        #in case parent is imported explicitely;
+        if(haskey(classes, import) && match(parentSimple, import)) {
+            parentFQN = import;
+            return parentFQN;
+        }
+                        
+        #in case parent is imported with a wildcard;
+        if (match(`\.\*`, import)) {
+            newImport := strreplace(import, ".*", "", true);
+            parentFQN = fullyQualifiedName(newImport, parentSimple);
+            if(haskey(classes, parentFQN)) {
+                return parentFQN;
+            }
+        }
+    }#end import foreach; 
+    return NO_PARENT;
+};
+
+# given a map of all classes it will map all fully qualified names
+# of classes to the fully qualified names of their super-types.
+# only class extension is considered.
+gatherSupertypes:= function(proj: Project, classes: map[string] of Declaration) : map[string] of string {
+    currentPackageName: string;
+    currentImports: array of string;
+    typeToSuper: map[string] of string;
+    
+    currFQN : string;
+    parentFQN: string;
+    inSuperClassMeths: bool;
+    
+    fields: map[string] of bool;
+    
+    visit(proj, visitor{
+        before repo: CodeRepository -> {
+            snapshot := getsnapshot(repo);
+            foreach (i: int; def(snapshot[i])) {
+                visit(snapshot[i]);
+            }
+        stop;
+        } # end visit Code Repository;
+    
+        before root: ASTRoot -> {
+            currentPackageName = getPackageName(root);
+            temp : map[string] of bool;
+            foreach(i: int; def(root.imports[i]))
+                temp[root.imports[i]] = true;
+                
+            currentImports = keys(temp);
+        } #end ASTRoot
+            
+        before decl: Declaration -> {
+            if (decl.kind == TypeKind.CLASS) {
+                if (hasClassSupertype(decl)) {
+                    currFQN = fullyQualifiedName(currentPackageName, decl.name);
+                    parentFQN = getFullyQualNameOfSuper(classes, currentImports, currentPackageName, decl);
+                    if(!match(parentFQN, NO_PARENT)) {
+                        fields = getFieldsOfChildClass(classes, currFQN, parentFQN);
+                        inSuperClassMeths = true;
+                        f := keys(fields);
+                        combinedFields := strCombine(f, " ");
+                        all_fields[currFQN] << combinedFields;
+                        #foreach(i: int; def(decl.methods[i]))
+                        #    visit(decl.methods[i]);
+                        
+                        fields = getFieldsOfSuperClass(classes, parentFQN);
+                        inSuperClassMeths = true;
+                        f = keys(fields);
+                        combinedFields = strCombine(f, " ");
+                        all_fields[parentFQN] << combinedFields;
+                        #foreach(j: int; def(classes[parentFQN].methods[j]))
+                        #    visit(classes[parentFQN].methods[j]);
+                    }#end match if
+                }
+            }
+            stop;
+        }# end declration visitor
+        
+        before m: Method -> {
+            effects := getEffectsOfMethod(fields, m);
+            effStr := strCombine(effects, " ");
+            #cls[currFQN][decl.methods[i].name][typeSignature(decl.methods[i])] << effSubStr;
+            stop;
+        }# end method visitor;
+    }); #end visitor definition
+    
+    return typeToSuper;
+};
+
+if(match(`109474`, p.id)){
+
+classes := gatherAllClasses(p);
+typeToSuper := gatherSupertypes(p, classes);
+
+
+}

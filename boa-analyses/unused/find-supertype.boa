@@ -1,0 +1,160 @@
+p: Project = input;
+extend: output collection [string] of string;
+
+#====== DEBUG
+#[p.id] -> fqn of class
+debug_allClasses: output collection[string] of string;
+
+#[fqn type name][type_of_reference] -> fqn of supertype
+debug_typeToSuper: output collection[string][int] of string;
+
+#[p.id][p.name] -> p_url
+p_id: output collection[string][string] of string;
+#====== DEBUG
+
+getPackageName: = function (root: ASTRoot): string {
+    temp := "";
+
+    foreach (i: int; def(root.namespaces[i])) {
+        if(i == 0) 
+            temp = format("%s", root.namespaces[i].name); 
+        else
+            temp = format("%s.%s", temp, root.namespaces[i].name); 
+    }
+    return temp;
+};
+
+fullyQualifiedName:= function (currPckg: string, typeName: string) : string{
+    return format("%s.%s", currPckg, typeName);
+};
+
+# return a map from the fully qualified name of a class to the Declaration
+# ast node of that class. The map contains the mapping for all classes in the
+# project.
+gatherAllClasses:= function(proj: Project) : map[string] of Declaration {
+    currentPackageName: string;
+    nameToDecl: map[string] of Declaration;
+    
+    visit(p, visitor{
+        before repo: CodeRepository -> {
+            snapshot := getsnapshot(repo);
+            foreach (i: int; def(snapshot[i])) {
+                visit(snapshot[i]);
+            }
+        stop;
+        } # end visit Code Repository;
+    
+        before root: ASTRoot -> {
+            currentPackageName = getPackageName(root);
+        } #end ASTRoot
+            
+        before decl: Declaration -> {
+            if (decl.kind == TypeKind.CLASS) {
+                fqn := fullyQualifiedName(currentPackageName, decl.name);
+                nameToDecl[fqn] = decl;
+                debug_allClasses[p.id] << fqn;
+            }
+            stop;
+        }
+    }); #end visitor definition
+    
+    return nameToDecl;
+};
+
+hasClassSupertype := function(decl: Declaration): bool {
+    if (def(decl.parents)) {
+        foreach(i: int; def(decl.parents[i])) {
+            if(decl.parents[i].kind == TypeKind.CLASS)
+                return true;
+        }
+    }
+    return false;
+};
+
+getClassParentName := function(decl: Declaration): string {
+    if (def(decl.parents)) {
+        foreach(i: int; def(decl.parents[i])) {
+            if(decl.parents[i].kind == TypeKind.CLASS)
+                return decl.parents[i].name;
+        }
+    }
+    return "BUG_BUG_BUG";
+};
+
+gatherSupertypes:= function(classes: map[string] of Declaration) : map[string] of string {
+    currentPackageName: string;
+    currentImports: array of string;
+    typeToSuper: map[string] of string;
+    
+    visit(p, visitor{
+        before repo: CodeRepository -> {
+            snapshot := getsnapshot(repo);
+            foreach (i: int; def(snapshot[i])) {
+                visit(snapshot[i]);
+            }
+        stop;
+        } # end visit Code Repository;
+    
+        before root: ASTRoot -> {
+            currentPackageName = getPackageName(root);
+            temp : map[string] of bool;
+            foreach(i: int; def(root.imports[i]))
+                temp[root.imports[i]] = true;
+                
+            currentImports = keys(temp);
+        } #end ASTRoot
+            
+        before decl: Declaration -> {
+            if (decl.kind == TypeKind.CLASS) {
+                if (hasClassSupertype(decl)) {
+                    currFQN := fullyQualifiedName(currentPackageName, decl.name);
+                    parentSimple := getClassParentName(decl);
+                    #in case the class was referenced by it's fqn in the extends
+                    #clause then we look directly;
+                    if(haskey(classes, parentSimple)) {
+                        typeToSuper[currFQN] = parentSimple;
+                        debug_typeToSuper[currFQN][0] << parentSimple;
+                        stop;
+                    }
+                    
+                    #if the superclass is in the current package;
+                    parentFQN := fullyQualifiedName(currentPackageName, parentSimple);
+                    if(haskey(classes, parentFQN)) {
+                        typeToSuper[currFQN] = parentFQN;
+                        debug_typeToSuper[currFQN][1] << parentFQN;
+                        stop;
+                    }
+                    
+                    #look to see if the parent superclass is in one of the imports.
+                    foreach(i: int; def(currentImports[i])) {
+                        import := currentImports[i];
+                        #in case parent is imported explicitely;
+                        if(haskey(classes, import) && match(parentSimple, import)) {
+                            typeToSuper[currFQN] = parentFQN;
+                            debug_typeToSuper[currFQN][2] << parentFQN;
+                            stop;
+                        }
+                        
+                        #in case parent is imported with a wildcard;
+                        if (match(`\.\*`, import)) {
+                            newImport := strreplace(import, ".*", "", true);
+                            parentFQN = fullyQualifiedName(newImport, parentSimple);
+                            if(haskey(classes, parentFQN)) {
+                                typeToSuper[currFQN] = parentFQN;
+                                debug_typeToSuper[currFQN][3] << parentFQN;
+                                stop;
+                            }
+                        }
+                    }#end import foreach;
+                }
+            }
+            stop;
+        }# end declration visitor
+    }); #end visitor definition
+    
+    return typeToSuper;
+};
+
+classes := gatherAllClasses(p);
+typeToSuper := gatherSupertypes(classes);
+p_id[p.id][p.name] << p.project_url;

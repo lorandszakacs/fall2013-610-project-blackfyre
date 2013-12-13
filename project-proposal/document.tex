@@ -1,0 +1,142 @@
+% THIS IS SIGPROC-SP.TEX - VERSION 3.1
+% WORKS WITH V3.2SP OF ACM_PROC_ARTICLE-SP.CLS
+% APRIL 2009
+%
+% It is an example file showing how to use the 'acm_proc_article-sp.cls' V3.2SP
+% LaTeX2e document class file for Conference Proceedings submissions.
+% ----------------------------------------------------------------------------------------------------------------
+% This .tex file (and associated .cls V3.2SP) *DOES NOT* produce:
+%       1) The Permission Statement
+%       2) The Conference (location) Info information
+%       3) The Copyright Line with ACM data
+%       4) Page numbering
+% ---------------------------------------------------------------------------------------------------------------
+% It is an example which *does* use the .bib file (from which the .bbl file
+% is produced).
+% REMEMBER HOWEVER: After having produced the .bbl file,
+% and prior to final submission,
+% you need to 'insert'  your .bbl file into your source .tex file so as to provide
+% ONE 'self-contained' source file.
+%
+% Questions regarding SIGS should be sent to
+% Adrienne Griscti ---> griscti@acm.org
+%
+% Questions/suggestions regarding the guidelines, .tex and .cls files, etc. to
+% Gerald Murray ---> murray@hq.acm.org
+%
+% For tracking purposes - this is V3.1SP - APRIL 2009
+
+\documentclass{acm_proc_article-sp}
+
+\begin{document}
+
+\title{Does behavioral subtyping happen in practice?}
+\subtitle{[COM S 610 --- Fall 2013 --- Project Proposal]}
+%
+% You need the command \numberofauthors to handle the 'placement
+% and alignment' of the authors beneath the title.
+%
+% For aesthetic reasons, we recommend 'three authors at a time'
+% i.e. three 'name/affiliation blocks' be placed beneath the title.
+%
+% NOTE: You are NOT restricted in how many 'rows' of
+% "name/affiliations" may appear. We just ask that you restrict
+% the number of 'columns' to three.
+%
+% Because of the available 'opening page real-estate'
+% we ask you to refrain from putting more than six authors
+% (two rows with three columns) beneath the article title.
+% More than six makes the first-page appear very cluttered indeed.
+%
+% Use the \alignauthor commands to handle the names
+% and affiliations for an 'aesthetic maximum' of six authors.
+% Add names, affiliations, addresses for
+% the seventh etc. author(s) as the argument for the
+% \additionalauthors command.
+% These 'additional authors' will be output/set for you
+% without further effort on your part as the last section in
+% the body of your article BEFORE References or any Appendices.
+
+\numberofauthors{1} %  in this sample file, there are a *total*
+% of EIGHT authors. SIX appear on the 'first-page' (for formatting
+% reasons) and the remaining two appear in the \additionalauthors section.
+%
+\author{
+% You can go ahead and credit any number of authors here,
+% e.g. one 'row of three' or two rows (consisting of one row of three
+% and a second row of one, two or three).
+%
+% The command \alignauthor (no curly braces needed) should
+% precede each author name, affiliation/snail-mail address and
+% e-mail address. Additionally, tag each line of
+% affiliation/address with \affaddr, and tag the
+% e-mail address with \email.
+%
+% 1st. author
+\alignauthor
+Lor\'{a}nd Szak\'{a}cs\\
+       \affaddr{Iowa State University}\\
+       \email{lorand@iastate.edu}
+% 2nd. author
+}
+% There's nothing stopping you putting the seventh, eighth, etc.
+% author on the opening page (as the 'third row') but we ask,
+% for aesthetic reasons that you place these 'additional authors'
+% in the \additional authors block, viz.
+% Just remember to make sure that the TOTAL number of authors
+% is the number that will appear on the first page PLUS the
+% number that will appear in the \additionalauthors section.
+
+\maketitle
+
+\section{Summary}
+\subsection{Background}
+The \emph{Liskov Substitution Principle} (\emph{a.k.a.}behavioral subtyping), is a well known \cite{martin2003agile} object oriented heuristic that advises programmers to write subtypes to classes in such a way that they can handle a superset of the behaviors of their superclasses and return a subset of the values returned by the superclass. Or, a more formal and complete description: subtypes are allowed to weaken the pre-conditions and strengthen the post-conditions imposed by their supertypes.
+
+This heuristic has great implications on program correctness, especially when concerned with locking schemes; e.g. in Java, if a supertype uses the \emph{synchronized} modifier on a method, its subtypes can ommit the modifier when overriding said method, potentially creating a data race.
+
+Even though it has gotten limited attention from the research community, the \emph{Liskov Substitution Principle} is regarded as a corner stone guideline in object oriented design, being part of the so called SOLID principles \cite{martin2000design}.
+
+\subsection{Research question}
+The idea of behavioral subtyping has been part of the zeitgeist of industry programmers since at least 1988\cite{meyer1988object} and has been brought forward as a good guideline by famous speakers like Robert C. Martin and Bertrand Meyer. Despite two and a half decades of attention, no one, to the best of the author's knowldge, has set out to investigate whether or not programmers actually employ behavioral subtyping when writting programs. And, as the title might suggest, the proposed study seeks to answer that exact question.
+
+Keep in mind that the proposed study does not, in any way, tackle the issue of whether or not behavioral subtyping a good heuristic. But rather, considering that it is generally accepted as being beneficial, is it actually used in practice?
+
+\subsection{Methodology}
+The proposed study will seek to answer this question by doing a ultra-large scale investigation of Java programs using the Boa programming language and framework\cite{dyer2013boa:icse}. Using Boa's analysis features \cite{dyer2013boa:gpce} we propose to write a side-effects analysis to determine whether or not behavioral subtyping is preserved. Our analysis will look at the side effects of methods overriden in subtypes and compare them to the side-effects of the method defined in the supertype.
+
+For our purposes we define the side effects of a method \emph{m} as the union between: the set of write operations performed on the fields of the enclosing class \emph{and} the effects of all other method calls in the control flow of \emph{m}. But, in some cases it might be more lucrative to determine whether or not some methods are observationaly pure \cite{barnett200499, naumann2007observational, cok2008extensions} -- i.e.\ have no side-effects as far as the client is concerned -- than to do effects analysis on them. \\
+If a supertype method and a subtype method make calls to the same method, an observational equivalence\cite{definitionOfObservationalEquivalence} analysis might be required to increase the accuracy of the result. Two methods are considered to be observationaly equivalent if, from the point of view of the same context, they behave the same. Employing this approach has a major caveat in that, currently, there are no such analyses for source code; the closest usable research is a formalization of the observational equivalence of two modules\cite{aldrich2005open}.
+
+To deal with the ambiguity introduced by aliasing we will employ an interprocedural pointer analysis similar to the one used by Landi et.\ al.\ \citeA{landi1993interprocedural}.
+
+Commutativity analysis \cite{rinard1997commutativity, aleen2009commutativity} might be required for determining whether or not two methods that perform the same operations -- but in different order -- break behavioral subtyping. Two operations, \emph{A} and \emph{B}, are said to be commutative if the result of applying \emph{A} followed by \emph{B} is the same as applying \emph{B} followed by \emph{A}.
+
+\subsection{Threats to validity}
+Boa does not provide fully qualified and resolved type information, therefore we might not be able to determine with full accurracy the type to which method calls (within the control flow of our analysis entry point) belong to. Which can lead to inaccuracies in the computation of effects. But, with yet to be determined approximations, we might be able to ensure that said inaccuracies produce either false positives or false negatives.
+
+Also, we do not plan on investigating whether or not a difference in the behavior of two methods leads to an incorrect program given their respective use context, i.e.\ doing an observational equivalence analysis of said methods.
+
+The most pressing threat is the disparity between how the research community has, so far, reasoned about behavioural subtyping -- in terms of specification \cite{liskov1994behavioral, dhara1996forcing, liskov1999behavioral, leavens2006behavioral} -- and the way of reasoning in terms of side-effects proposed in this study. The differences between the two definitions is yet unclear.
+
+\section{Expected contributions}
+If the results of the proposed study prove to be conclusive then we will know whether or not an OO heuristic, with many advocates of its usefulness, is being followed in practice. This, in turn, can lead to either a reevaluation, or a reinforcement of current methodologies used in programmer training. It also gives an estimate about how reasonable it is for analyses to make assumptions about behavioral subtyping preservation. Most importantly, it has the potential to encourage further such investigations, so that we can get a good grasp on which heuristics are actually being used and which are not.
+
+\section{Schedule of deliverables}
+The following deliverable milestones are defined as the distance relative to September 23rd 2013:\begin{itemize}
+  \item \emph{2 weeks}. Determining whether or not the analyses mentioned in section 1.3 (commutativity and observational purity, equivalence) need to be employed; and semi-formally defining behavioral subtyping violations in terms of side-effects. Figure out how the behavioral subtyping definition in terms of specification relates to the one in terms of subtyping. If it is unfeasable for the analysis to be written in the alloted time then limit study to special cases of behavioral subtyping, e.g.\ verifying if locking schemes are not being broken in subtypes.
+  \item \emph{6 weeks}. Implement the above analyses in Boa. Revise any aspects of the previous step if necessary. If the above analyses cannot be written entirely in Boa then implement them as a Scala/Java programs.
+  \item \emph{7 weeks}. Draw conclusions from results and write final report on findings.
+\end{itemize}
+
+
+
+%
+% The following two commands are all you need in the
+% initial runs of your .tex file to
+% produce the bibliography for the citations in your paper.
+\bibliographystyle{abbrv}
+\bibliography{project-proposal}  % sigproc.bib is the name of the Bibliography in this case
+
+\balancecolumns
+\end{document}
